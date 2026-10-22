@@ -3,7 +3,7 @@ package com.moneytrail.app
 object Categorizer {
     val all = listOf(
         "Income", "Cash In", "Transfers", "Transport", "Airtime & Data",
-        "Insurance", "Bills", "Food", "Shopping", "Bank", "Cash", "Loans", "Other",
+        "Insurance", "Bills", "Food", "Shopping", "Bank", "Cash", "Loans", "Fees & Tax", "Other",
     )
 
     private val rules = listOf(
@@ -28,6 +28,8 @@ object Categorizer {
             "BANK_DEBIT" -> "Bank"
             "LOAN", "LOAN_REPAYMENT" -> "Loans"
             "BUNDLE" -> "Airtime & Data"
+            "FEE" -> "Fees & Tax"
+            "WALLET_TOPUP", "WALLET_TO_BANK", "BANK_TO_WALLET", "ACCOUNT_MOVE" -> "Bank"
             else -> if (isCredit) "Income" else "Other"
         }
     }
