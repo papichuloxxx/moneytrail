@@ -1,6 +1,6 @@
 package com.moneytrail.app
 
-enum class Source { ECOCASH, NMB }
+enum class Source { ECOCASH, NMB, OMARI }
 
 /** A transaction freshly parsed from an SMS, before it is stored. Money is in cents. */
 data class ParsedTx(

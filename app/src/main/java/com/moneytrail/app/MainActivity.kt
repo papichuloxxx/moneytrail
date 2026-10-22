@@ -89,7 +89,7 @@ fun App(vm: MainViewModel) {
             Text("Money Trail", style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(12.dp))
             Text(
-                "To track your EcoCash and NMB Bank transactions, the app needs permission to read " +
+                "To track your EcoCash, NMB Bank and Omari transactions, the app needs permission to read " +
                     "those SMS messages. Everything stays on this phone.",
             )
             Spacer(Modifier.height(24.dp))
@@ -228,6 +228,9 @@ private fun kindLabel(kind: String) = when (kind) {
     "WITHDRAWAL" -> "Bank withdrawal"
     "BANK_CREDIT" -> "Bank credit"
     "BANK_DEBIT" -> "Bank debit"
+    "BUNDLE" -> "Bundle"
+    "LOAN" -> "Loan"
+    "LOAN_REPAYMENT" -> "Loan repayment"
     else -> "Other"
 }
 

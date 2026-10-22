@@ -67,10 +67,49 @@ class SmsParserTest {
         assertNull(p("Ecosure", "Dear X, your EcoSure Standard package has been renewed successfully for the month of NOV2026."))
     }
 
+    @Test fun omariZipitInAndSent() {
+        val z = p("Omari", "Zipit Receive of : USD4.00 was successful. Trans ID 000044103842. New wallet bal USD52.11. Earn points for every USD50 to stand a chance to win in the Omari Transact & Win promo")!!
+        assertEquals("ZIPIT", z.kind); assertTrue(z.isCredit); assertEquals(400, z.amountCents)
+        assertEquals(5211L, z.balanceCents); assertEquals("OMARI-000044103842", z.reference)
+        assertEquals(Source.OMARI, z.source); assertEquals("Income", z.category)
+        val s = p("Omari", "You have successfully sent:\nUSD34.00 to 5644391 acc. *2247,\ntrans ID 000143111877. Your new Omari wallet balance is USD1.09 Earn points for every USD50 to stand a chance to win in the Omari Transact & Win promo")!!
+        assertEquals("TRANSFER_OUT", s.kind); assertFalse(s.isCredit); assertEquals(3400, s.amountCents)
+        assertEquals(109L, s.balanceCents); assertEquals("5644391 *2247", s.counterparty)
+        assertEquals("OMARI-000143111877", s.reference)
+    }
+
+    @Test fun omariBundleLoanAndRepayment() {
+        val b = p("Omari", "Your USD \$1.00 Omari Mahala Bundle purchase was successful,ID 000142738169.\nTo transact for free buy Omari for Mahala Bundles on *707#.")!!
+        assertEquals("BUNDLE", b.kind); assertFalse(b.isCredit); assertEquals(100, b.amountCents)
+        assertEquals("Omari Mahala Bundle", b.counterparty); assertEquals("Airtime & Data", b.category)
+        val l = p("Omari", "You have received a Cash Loan of USD10.80 from Omari.")!!
+        assertEquals("LOAN", l.kind); assertTrue(l.isCredit); assertTrue(l.isInternal); assertEquals(1080, l.amountCents)
+        assertEquals("Loans", l.category)
+        val r = p("Omari", "Your wallet has been debited with USD1.09 on 2026-10-12 04:27 via Omari Loan Repayment. .")!!
+        assertEquals("LOAN_REPAYMENT", r.kind); assertFalse(r.isCredit); assertEquals(109, r.amountCents)
+        val local = java.time.Instant.ofEpochMilli(r.timestamp).atZone(Analysis.zone)
+        assertEquals(12, local.dayOfMonth); assertEquals(4, local.hour); assertEquals(27, local.minute)
+    }
+
+    @Test fun omariFromPhoneNumberSender() {
+        // Omari is often saved as a contact, so the raw address may be a number
+        assertNotNull(p("+263771234567", "You have received a Cash Loan of USD34.20 from Omari."))
+        assertNull(p("+263771234567", "Hi, see you at the Omari shop later"))
+    }
+
+    @Test fun omariNoticesAreIgnored() {
+        assertNull(p("Omari", "Your Omari outstanding loan is USD50.00,due 11/10/2026. Dial *707# on O'mari,option 6 then option 5 to repay loan!"))
+        assertNull(p("Omari", "Your USD \$1.00 Omari Mahala Bundle purchase has expired,\nTo transact for free buy Omari for Mahala Bundles on *707#."))
+        assertNull(p("Omari", "Dear Kudakwashe,\nRepay your overdue Omari Cash Loan of USD10.91 today & unlock instant access to another USD loan. To repay,Cash In or ZIPIT USD into your wallet."))
+        assertNull(p("Omari", "Hi Kudakwashe,\nYour Omari Cash Loan repayment of USD38.0 is due today. Please Cash In USD at an Omari Branch or Agent or ZIPIT into your Omari wallet."))
+        assertNull(p("Omari", "Buy ZESA tokens with your Omari USD or ZiG wallet. Fund your wallet via ZIPIT from any bank or CashIn USD at any Omari Shop, Bhola,TM PnP & Spar. Dial *707# now"))
+    }
+
     @Test fun senderMatching() {
         assertNotNull(SmsParser.sourceFor("+263164USD"))
         assertNotNull(SmsParser.sourceFor("263164ZWG"))
         assertNotNull(SmsParser.sourceFor("NMB Bank"))
+        assertEquals(Source.OMARI, SmsParser.sourceFor("OMARI"))
         assertNull(SmsParser.sourceFor("Ecosure"))
     }
 }
