@@ -1,6 +1,6 @@
 {
   "name": "Money Trail",
-  "description": "Track EcoCash and NMB Bank financial transactions from SMS messages on your phone with automatic categorization and balance checks.",
+  "description": "Track EcoCash, NMB Bank, and Omari financial transactions from SMS messages on your phone with automatic categorization and balance checks.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

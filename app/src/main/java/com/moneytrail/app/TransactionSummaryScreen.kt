@@ -23,8 +23,12 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -197,36 +201,57 @@ fun TransactionSummaryScreen(
             // Filter Controls: Bank Source, Currency, and Time Period
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Bank Source Filter Chips
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    // Bank Source Dropdown Select
+                    var sourceExpanded by remember { mutableStateOf(false) }
+                    val sourceOptions = listOf(
+                        null to "All Sources",
+                        "ECOCASH" to "EcoCash",
+                        "NMB" to "NMB Bank",
+                        "OMARI" to "Omari",
+                    )
+                    val selectedSourceLabel = sourceOptions.firstOrNull { it.first == selectedSource }?.second ?: "All Sources"
+
+                    ExposedDropdownMenuBox(
+                        expanded = sourceExpanded,
+                        onExpandedChange = { sourceExpanded = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("source_dropdown_box"),
                     ) {
-                        Text(
-                            text = "Source:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        OutlinedTextField(
+                            value = selectedSourceLabel,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Bank Source") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceExpanded) },
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth()
+                                .testTag("source_dropdown_field"),
+                            shape = RoundedCornerShape(12.dp),
                         )
-                        FilterChip(
-                            selected = selectedSource == null,
-                            onClick = { selectedSource = null },
-                            label = { Text("All") },
-                            modifier = Modifier.testTag("source_chip_all"),
-                        )
-                        FilterChip(
-                            selected = selectedSource == "ECOCASH",
-                            onClick = { selectedSource = if (selectedSource == "ECOCASH") null else "ECOCASH" },
-                            label = { Text("EcoCash") },
-                            modifier = Modifier.testTag("source_chip_ecocash"),
-                        )
-                        FilterChip(
-                            selected = selectedSource == "NMB",
-                            onClick = { selectedSource = if (selectedSource == "NMB") null else "NMB" },
-                            label = { Text("NMB Bank") },
-                            modifier = Modifier.testTag("source_chip_nmb"),
-                        )
+                        ExposedDropdownMenu(
+                            expanded = sourceExpanded,
+                            onDismissRequest = { sourceExpanded = false },
+                            modifier = Modifier.testTag("source_dropdown_menu"),
+                        ) {
+                            sourceOptions.forEach { (sourceKey, label) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = label,
+                                            fontWeight = if (selectedSource == sourceKey) FontWeight.Bold else FontWeight.Normal,
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedSource = sourceKey
+                                        sourceExpanded = false
+                                    },
+                                    modifier = Modifier.testTag("source_option_${sourceKey ?: "all"}"),
+                                )
+                            }
+                        }
                     }
 
                     // Currency selectors
@@ -669,5 +694,8 @@ private fun kindLabel(kind: String): String = when (kind) {
     "WITHDRAWAL" -> "Bank Withdrawal"
     "BANK_CREDIT" -> "Bank Credit"
     "BANK_DEBIT" -> "Bank Debit"
+    "BUNDLE" -> "Bundle"
+    "LOAN" -> "Loan"
+    "LOAN_REPAYMENT" -> "Loan Repayment"
     else -> "Other"
 }
