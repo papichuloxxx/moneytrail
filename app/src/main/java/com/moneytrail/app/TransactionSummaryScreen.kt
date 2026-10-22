@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Switch
@@ -81,10 +82,14 @@ fun TransactionSummaryScreen(
 
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedCurrency by remember { mutableStateOf("USD") }
-    var selectedTxn by remember { mutableStateOf<Transaction?>(null) }
+    var selectedTxnId by remember { mutableStateOf<Long?>(null) }
     var showAllTime by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedSource by remember { mutableStateOf<String?>(null) }
+
+    val selectedTxn = remember(transactions, selectedTxnId) {
+        transactions.firstOrNull { it.id == selectedTxnId }
+    }
 
     val currencies = remember(transactions) {
         (transactions.map { it.currency } + listOf("USD", "ZWG")).distinct().sorted()
@@ -371,7 +376,7 @@ fun TransactionSummaryScreen(
                         transaction = txn,
                         isDuplicate = flags.duplicates.contains(txn.id),
                         balanceGap = flags.balanceGaps[txn.id],
-                        onClick = { selectedTxn = txn },
+                        onClick = { selectedTxnId = txn.id },
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 4.dp))
                 }
@@ -380,11 +385,15 @@ fun TransactionSummaryScreen(
     }
 
     selectedTxn?.let { txn ->
-        val liveTxn = transactions.firstOrNull { it.id == txn.id } ?: txn
         TransactionDetailDialog(
-            transaction = liveTxn,
-            vm = vm,
-            onDismiss = { selectedTxn = null },
+            transaction = txn,
+            onCategoryChange = { newCat ->
+                vm.setCategory(txn.id, newCat)
+            },
+            onInternalChange = { isInternal ->
+                vm.setInternal(txn.id, isInternal)
+            },
+            onDismiss = { selectedTxnId = null },
         )
     }
 }
@@ -619,9 +628,13 @@ private fun TransactionItemRow(
 @Composable
 private fun TransactionDetailDialog(
     transaction: Transaction,
-    vm: TransactionViewModel,
+    onCategoryChange: (String) -> Unit,
+    onInternalChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var currentCategory by remember(transaction.id, transaction.category) { mutableStateOf(transaction.category) }
+    var currentInternal by remember(transaction.id, transaction.isInternal) { mutableStateOf(transaction.isInternal) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -646,8 +659,11 @@ private fun TransactionDetailDialog(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Switch(
-                        checked = transaction.isInternal,
-                        onCheckedChange = { vm.setInternal(transaction.id, it) },
+                        checked = currentInternal,
+                        onCheckedChange = {
+                            currentInternal = it
+                            onInternalChange(it)
+                        },
                         modifier = Modifier.testTag("internal_transfer_switch"),
                     )
                 }
@@ -660,20 +676,29 @@ private fun TransactionDetailDialog(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Categorizer.all.forEach { category ->
-                    val isSelected = category == transaction.category
+                    val isSelected = category == currentCategory
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { vm.setCategory(transaction.id, category) }
-                            .padding(vertical = 8.dp),
+                            .clickable {
+                                currentCategory = category
+                                onCategoryChange(category)
+                            }
+                            .padding(vertical = 4.dp)
+                            .testTag("category_option_$category"),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = if (isSelected) "● " else "○ ",
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = {
+                                currentCategory = category
+                                onCategoryChange(category)
+                            },
                         )
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             text = category,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         )
                     }
