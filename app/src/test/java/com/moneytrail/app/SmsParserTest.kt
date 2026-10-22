@@ -91,10 +91,8 @@ class SmsParserTest {
         assertEquals(12, local.dayOfMonth); assertEquals(4, local.hour); assertEquals(27, local.minute)
     }
 
-    @Test fun omariFromPhoneNumberSender() {
-        // Omari is often saved as a contact, so the raw address may be a number
-        assertNotNull(p("+263771234567", "You have received a Cash Loan of USD34.20 from Omari."))
-        assertNull(p("+263771234567", "Hi, see you at the Omari shop later"))
+    @Test fun omariOnlyFromOmariSender() {
+        assertNull(p("+263771234567", "You have received a Cash Loan of USD34.20 from Omari."))
     }
 
     @Test fun omariNoticesAreIgnored() {

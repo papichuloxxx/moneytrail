@@ -25,11 +25,8 @@ object SmsParser {
 
     /** Returns null for messages from other senders or messages that are not transactions. */
     fun parse(address: String?, body: String, smsTime: Long): ParsedTx? {
+        val source = sourceFor(address) ?: return null
         val text = body.replace(WS, " ").trim()
-        // Omari may show up under a phone number rather than a sender name, so also recognise it by
-        // wording. parseOmari only accepts exact transaction formats, so this stays strict.
-        val source = sourceFor(address)
-            ?: if (text.contains("Omari", ignoreCase = true)) Source.OMARI else return null
         return when (source) {
             Source.ECOCASH -> parseEcoCash(text, smsTime)
             Source.NMB -> parseNmb(text, smsTime)
