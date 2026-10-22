@@ -19,7 +19,22 @@ data class Txn(
     val isInternal: Boolean,
     val category: String,
     val raw: String,
-)
+) {
+    @androidx.room.Ignore
+    val merchant: String = counterparty
+
+    @androidx.room.Ignore
+    val date: Long = timestamp
+
+    @androidx.room.Ignore
+    val amount: Long = amountCents
+
+    @androidx.room.Ignore
+    val bankSource: String = source
+}
+
+/** Typealias for Transaction to match standard domain terminology */
+typealias Transaction = Txn
 
 fun ParsedTx.toTxn() = Txn(
     source = source.name, currency = currency, reference = reference, timestamp = timestamp,

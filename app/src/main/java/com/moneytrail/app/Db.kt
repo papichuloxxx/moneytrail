@@ -16,8 +16,20 @@ interface TxnDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(t: Txn): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(transactions: List<Txn>): List<Long>
+
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC, id DESC")
     fun observeAll(): Flow<List<Txn>>
+
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC, id DESC")
+    suspend fun getAll(): List<Txn>
+
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getById(id: Long): Txn?
+
+    @Query("SELECT * FROM transactions WHERE source = :source ORDER BY timestamp DESC")
+    fun observeBySource(source: String): Flow<List<Txn>>
 
     @Query("UPDATE transactions SET category = :category WHERE id = :id")
     suspend fun setCategory(id: Long, category: String)
@@ -26,9 +38,13 @@ interface TxnDao {
     suspend fun setInternal(id: Long, internal: Boolean)
 }
 
+/** Typealias for TransactionDao */
+typealias TransactionDao = TxnDao
+
 @Database(entities = [Txn::class], version = 1, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun dao(): TxnDao
+    fun transactionDao(): TransactionDao = dao()
 
     companion object {
         @Volatile private var instance: AppDb? = null
