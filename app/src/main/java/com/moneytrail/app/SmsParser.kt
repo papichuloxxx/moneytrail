@@ -6,7 +6,7 @@ import java.time.ZoneId
 
 /**
  * Pure Kotlin (no Android imports) so it can be unit tested on the JVM.
- * Supports EcoCash (+263164USD / +263164ZWG) and NMB Bank alerts.
+ * Supports EcoCash (+263164USD / +263164ZWG), NMB Bank and Omari alerts.
  */
 object SmsParser {
     private val zone: ZoneId = ZoneId.of("Africa/Harare")
@@ -18,6 +18,7 @@ object SmsParser {
         return when {
             a.endsWith("263164USD") || a.endsWith("263164ZWG") -> Source.ECOCASH
             a == "NMBBANK" -> Source.NMB
+            a == "OMARI" -> Source.OMARI
             else -> null
         }
     }
@@ -29,6 +30,7 @@ object SmsParser {
         return when (source) {
             Source.ECOCASH -> parseEcoCash(text, smsTime)
             Source.NMB -> parseNmb(text, smsTime)
+            Source.OMARI -> parseOmari(text, smsTime)
         }
     }
 
@@ -147,6 +149,82 @@ object SmsParser {
         // RTGS notices, withdrawal requests, upgrade notices etc. are ignored on purpose
         return null
     }
+
+    // ---------- Omari ----------
+    private val OM_ZIPIT_IN = Regex(
+        """Zipit Receive of\s*:\s*(USD|ZWG|ZiG)\s*([\d,]+\.\d{2}) was successful\. Trans ID (\d+)\. New wallet bal (?:USD|ZWG|ZiG)\s*([\d,]+\.\d{2})""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val OM_SENT = Regex(
+        """successfully sent:\s*(USD|ZWG|ZiG)\s*([\d,]+\.\d{2}) to (.+?), trans ID (\d+)\. Your new Omari wallet balance is (?:USD|ZWG|ZiG)\s*([\d,]+\.\d{2})""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val OM_BUNDLE = Regex(
+        """Your (USD|ZWG|ZiG) [$]?([\d,]+\.\d{2}) (.+?) purchase was successful,\s*ID (\d+)""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val OM_LOAN = Regex("""received a Cash Loan of (USD|ZWG|ZiG)\s*([\d,]+\.\d{2}) from Omari""", RegexOption.IGNORE_CASE)
+    private val OM_DEBIT = Regex(
+        """wallet has been debited with (USD|ZWG|ZiG)\s*([\d,]+\.\d{2}) on (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}) via (.+?)\.""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun parseOmari(text: String, smsTime: Long): ParsedTx? {
+        fun tx(
+            currency: String, reference: String, timestamp: Long, credit: Boolean, kind: String,
+            who: String, amount: Long, balance: Long?, internal: Boolean, category: String,
+        ) = ParsedTx(
+            source = Source.OMARI, currency = omariCurrency(currency), reference = reference,
+            timestamp = timestamp, isCredit = credit, kind = kind, counterparty = who,
+            amountCents = amount, balanceCents = balance, isInternal = internal,
+            category = category, raw = text,
+        )
+
+        OM_ZIPIT_IN.find(text)?.let { m ->
+            return tx(m.groupValues[1], "OMARI-" + m.groupValues[3], smsTime, true, "ZIPIT", "ZIPIT",
+                cents(m.groupValues[2]), cents(m.groupValues[4]), false,
+                Categorizer.guess("ZIPIT", true, "ZIPIT"))
+        }
+        OM_SENT.find(text)?.let { m ->
+            // "5644391 acc. *7187" -> "5644391 *7187"
+            val who = m.groupValues[3].replace(Regex("""\s*acc\.?\s*"""), " ").trim()
+            return tx(m.groupValues[1], "OMARI-" + m.groupValues[4], smsTime, false, "TRANSFER_OUT", who,
+                cents(m.groupValues[2]), cents(m.groupValues[5]), false,
+                Categorizer.guess("TRANSFER_OUT", false, who))
+        }
+        OM_BUNDLE.find(text)?.let { m ->
+            val who = m.groupValues[3]
+            return tx(m.groupValues[1], "OMARI-" + m.groupValues[4], smsTime, false, "BUNDLE", who,
+                cents(m.groupValues[2]), null, false, "Airtime & Data")
+        }
+        OM_LOAN.find(text)?.let { m ->
+            val amount = cents(m.groupValues[2])
+            // Borrowed money is not income, so it is internal like a bank withdrawal.
+            // No reference in this message: the SMS time keeps it unique.
+            return tx(m.groupValues[1], "OMARI-LOAN-$smsTime-$amount", smsTime, true, "LOAN", "Omari Cash Loan",
+                amount, null, true, "Loans")
+        }
+        OM_DEBIT.find(text)?.let { m ->
+            val g = m.groupValues
+            val ts = try {
+                LocalDateTime.of(g[3].toInt(), g[4].toInt(), g[5].toInt(), g[6].toInt(), g[7].toInt())
+                    .atZone(zone).toInstant().toEpochMilli()
+            } catch (e: Exception) {
+                smsTime
+            }
+            val amount = cents(g[2])
+            val who = g[8].trim()
+            val repayment = who.contains("Loan", ignoreCase = true)
+            return tx(g[1], "OMARI-DEBIT-${g[3]}${g[4]}${g[5]}${g[6]}${g[7]}-$amount", ts, false,
+                if (repayment) "LOAN_REPAYMENT" else "OTHER", who, amount, null, repayment,
+                if (repayment) "Loans" else Categorizer.guess("OTHER", false, who))
+        }
+        // Loan balance notices, reminders, expired bundles and promos are ignored on purpose
+        return null
+    }
+
+    /** Omari writes ZWG as "ZiG"; store it the same way as EcoCash and NMB. */
+    private fun omariCurrency(c: String) = if (c.equals("ZiG", ignoreCase = true)) "ZWG" else c.uppercase()
 
     private fun cents(s: String): Long = BigDecimal(s.replace(",", "")).movePointRight(2).toLong()
 }

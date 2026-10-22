@@ -1,6 +1,6 @@
 # Money Trail
 
-Android app that reads EcoCash (USD + ZWG) and NMB Bank SMS alerts and turns them into a
+Android app that reads EcoCash (USD + ZWG), NMB Bank and Omari SMS alerts and turns them into a
 transaction feed with monthly totals, categories and sanity checks. Everything is stored on the phone.
 
 ## Run it
@@ -20,6 +20,8 @@ Run the parser tests: `./gradlew test` (or right-click `SmsParserTest` > Run).
 - `MainActivity.kt` the screens.
 
 ## Notes
+- Omari loans are marked internal (borrowed money is not income), and so are loan repayments.
+  Flip the switch on a transaction if you want to count either one.
 - Google Play restricts SMS permissions, so install this directly on your phone (sideload).
 - Not yet handled (no samples): fees, airtime purchases, bill payments, other banks. Send samples
   and add a pattern in `SmsParser.kt` plus a test.
