@@ -1,5 +1,7 @@
 package com.moneytrail.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,12 +13,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -140,6 +145,29 @@ fun TransactionSummaryScreen(
             .mapValues { entry -> entry.value.sumOf { it.amountCents } }
             .toList()
             .sortedByDescending { it.second }
+    }
+
+    // Monthly trends for the past 6 months
+    val monthlyTrends = remember(transactions, selectedCurrency, selectedSource, selectedMonth) {
+        val endMonth = if (selectedMonth.isAfter(YearMonth.now())) selectedMonth else YearMonth.now()
+        (5 downTo 0).map { offset ->
+            val m = endMonth.minusMonths(offset.toLong())
+            val txnsInM = transactions.filter { txn ->
+                val currencyMatches = txn.currency == selectedCurrency
+                val sourceMatches = selectedSource == null || txn.source.equals(selectedSource, ignoreCase = true)
+                val txMonth = YearMonth.from(Instant.ofEpochMilli(txn.timestamp).atZone(Analysis.zone))
+                currencyMatches && sourceMatches && txMonth == m
+            }
+            val spending = txnsInM.filter { !it.isCredit && !it.isInternal }.sumOf { it.amountCents }
+            val income = txnsInM.filter { it.isCredit && !it.isInternal }.sumOf { it.amountCents }
+            MonthlyTrend(
+                month = m,
+                monthLabel = m.format(DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)),
+                spendingCents = spending,
+                incomeCents = income,
+                isSelected = m == selectedMonth,
+            )
+        }
     }
 
     Scaffold(
@@ -323,6 +351,18 @@ fun TransactionSummaryScreen(
                 )
             }
 
+            // Monthly Spending Trends Bar Chart
+            item {
+                MonthlySpendingBarChart(
+                    currency = selectedCurrency,
+                    trends = monthlyTrends,
+                    onSelectMonth = { m ->
+                        selectedMonth = m
+                        showAllTime = false
+                    },
+                )
+            }
+
             // Spending by Category Card
             if (byCategory.isNotEmpty()) {
                 item {
@@ -395,6 +435,140 @@ fun TransactionSummaryScreen(
             },
             onDismiss = { selectedTxnId = null },
         )
+    }
+}
+
+/**
+ * Monthly trend data model for the spending chart.
+ */
+data class MonthlyTrend(
+    val month: YearMonth,
+    val monthLabel: String,
+    val spendingCents: Long,
+    val incomeCents: Long,
+    val isSelected: Boolean,
+)
+
+/**
+ * Bar Chart displaying monthly spending trends.
+ * Supports touch interaction to select and filter by month.
+ */
+@Composable
+fun MonthlySpendingBarChart(
+    currency: String,
+    trends: List<MonthlyTrend>,
+    onSelectMonth: (YearMonth) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val maxSpending = remember(trends) { trends.maxOfOrNull { it.spendingCents } ?: 0L }
+    val totalPeriodSpending = remember(trends) { trends.sumOf { it.spendingCents } }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("monthly_spending_chart"),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        text = "Monthly Spending Trends",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Last 6 months · Tap a bar to filter",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = "$currency ${money(totalPeriodSpending)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = RED,
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+            // Bars Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .padding(top = 8.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                trends.forEach { trend ->
+                    val fraction = if (maxSpending > 0) {
+                        (trend.spendingCents.toFloat() / maxSpending.toFloat()).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    val barHeight = (fraction * 90).coerceAtLeast(4f).dp
+
+                    val barColor = when {
+                        trend.isSelected -> MaterialTheme.colorScheme.primary
+                        trend.spendingCents > 0 -> RED.copy(alpha = 0.55f)
+                        else -> MaterialTheme.colorScheme.outlineVariant
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onSelectMonth(trend.month) }
+                            .padding(horizontal = 4.dp)
+                            .testTag("chart_bar_${trend.month}"),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                    ) {
+                        // Amount label above bar
+                        if (trend.spendingCents > 0) {
+                            Text(
+                                text = money(trend.spendingCents).substringBefore("."),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (trend.isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (trend.isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+
+                        // Bar
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.65f)
+                                .height(barHeight)
+                                .background(
+                                    color = barColor,
+                                    shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 2.dp, bottomEnd = 2.dp),
+                                ),
+                        )
+
+                        Spacer(Modifier.height(6.dp))
+
+                        // Month label below bar
+                        Text(
+                            text = trend.monthLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (trend.isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (trend.isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -529,12 +703,20 @@ private fun CategoryBreakdownCard(
                 fontWeight = FontWeight.Bold,
             )
             byCategory.forEach { (cat, cents) ->
+                val catVisual = getCategoryVisual(cat)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(cat, style = MaterialTheme.typography.bodyMedium)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(catVisual.iconEmoji, style = MaterialTheme.typography.bodyMedium)
+                            Text(cat, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        }
                         Text(
                             text = "$currency ${money(cents)}",
                             style = MaterialTheme.typography.bodyMedium,
@@ -543,6 +725,8 @@ private fun CategoryBreakdownCard(
                     }
                     LinearProgressIndicator(
                         progress = { if (totalSpendingCents > 0) cents.toFloat() / totalSpendingCents else 0f },
+                        color = catVisual.color,
+                        trackColor = catVisual.color.copy(alpha = 0.15f),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp),
@@ -555,7 +739,88 @@ private fun CategoryBreakdownCard(
 }
 
 /**
- * Single transaction list row.
+ * Visual styling metadata for transaction categories.
+ */
+data class CategoryVisual(
+    val color: Color,
+    val iconEmoji: String,
+)
+
+fun getCategoryVisual(category: String): CategoryVisual = when (category) {
+    "Income" -> CategoryVisual(Color(0xFF1B7F3B), "💰")
+    "Cash In" -> CategoryVisual(Color(0xFF00897B), "💵")
+    "Transfers" -> CategoryVisual(Color(0xFF0288D1), "🔁")
+    "Transport" -> CategoryVisual(Color(0xFFE65100), "🚗")
+    "Airtime & Data" -> CategoryVisual(Color(0xFF8E24AA), "📱")
+    "Insurance" -> CategoryVisual(Color(0xFF3949AB), "🛡️")
+    "Bills" -> CategoryVisual(Color(0xFFD84315), "⚡")
+    "Food" -> CategoryVisual(Color(0xFFD81B60), "🍔")
+    "Shopping" -> CategoryVisual(Color(0xFFAD1457), "🛍️")
+    "Bank" -> CategoryVisual(Color(0xFF1565C0), "🏦")
+    "Cash" -> CategoryVisual(Color(0xFF6D4C41), "🪙")
+    "Loans" -> CategoryVisual(Color(0xFFF57F17), "📑")
+    else -> CategoryVisual(Color(0xFF546E7A), "🏷️")
+}
+
+@Composable
+fun CategoryIconBadge(
+    category: String,
+    modifier: Modifier = Modifier,
+) {
+    val visual = remember(category) { getCategoryVisual(category) }
+    Box(
+        modifier = modifier
+            .size(42.dp)
+            .background(
+                color = visual.color.copy(alpha = 0.15f),
+                shape = CircleShape,
+            )
+            .border(
+                width = 1.5.dp,
+                color = visual.color.copy(alpha = 0.45f),
+                shape = CircleShape,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = visual.iconEmoji,
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
+}
+
+@Composable
+fun CategoryPill(
+    category: String,
+    modifier: Modifier = Modifier,
+) {
+    val visual = remember(category) { getCategoryVisual(category) }
+    Row(
+        modifier = modifier
+            .background(
+                color = visual.color.copy(alpha = 0.14f),
+                shape = RoundedCornerShape(8.dp),
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .background(color = visual.color, shape = CircleShape),
+        )
+        Text(
+            text = category,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = visual.color,
+        )
+    }
+}
+
+/**
+ * Single transaction list row with color-coded category icon indicator and pill badge.
  */
 @Composable
 private fun TransactionItemRow(
@@ -574,14 +839,29 @@ private fun TransactionItemRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Color-coded category icon indicator
+        CategoryIconBadge(
+            category = transaction.category,
+            modifier = Modifier.padding(end = 12.dp),
+        )
+
         Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = transaction.counterparty,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                CategoryPill(category = transaction.category)
+            }
             Text(
-                text = transaction.counterparty,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = "${transaction.source} · ${kindLabel(transaction.kind)} · ${transaction.category}" +
+                text = "${transaction.source} · ${kindLabel(transaction.kind)}" +
                     if (transaction.isInternal) " · Internal" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -609,7 +889,7 @@ private fun TransactionItemRow(
             }
         }
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(10.dp))
 
         val amountPrefix = if (transaction.isCredit) "+" else "-"
         val amountColor = if (transaction.isCredit) GREEN else RED
@@ -677,6 +957,7 @@ private fun TransactionDetailDialog(
                 )
                 Categorizer.all.forEach { category ->
                     val isSelected = category == currentCategory
+                    val catVisual = getCategoryVisual(category)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -695,6 +976,15 @@ private fun TransactionDetailDialog(
                                 onCategoryChange(category)
                             },
                         )
+                        Spacer(Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(catVisual.color.copy(alpha = 0.15f), CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(catVisual.iconEmoji, style = MaterialTheme.typography.bodySmall)
+                        }
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = category,
