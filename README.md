@@ -15,6 +15,8 @@ Run the parser tests: `./gradlew test` (or right-click `SmsParserTest` > Run).
 - `SmsParser.kt`  one place that knows every message format. Add new formats here.
 - `Categorizer.kt` keyword rules for auto categories.
 - `SmsReceiver.kt` / `SmsImporter.kt` live capture and inbox scan.
+- `StatementParser.kt` reads EcoCash, Omari and NMB statement PDFs (fees, taxes, missed SMS);
+  `StatementImporter.importPdf(context, uri)` imports one and skips what SMS already recorded.
 - `Db.kt`, `Txn.kt` Room database; the unique reference stops duplicates.
 - `Analysis.kt` double-charge and balance-gap checks.
 - `MainActivity.kt` the screens.
